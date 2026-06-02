@@ -1,6 +1,5 @@
-import socket
+import asyncio
 from rich.console import Console
-from rich.panel import Panel
 from rich.progress import track
 
 console = Console()
@@ -12,23 +11,27 @@ services = {
     25: "SMTP",
     80: "HTTP"
 }
-def check_ports(ip):
-    open_ports = []
-
+async def check_one_port(ip, port):
+    services_match = services.get(port, "Unknown")
     try:
-        for port in track(range(20, 101), description=f"Scanning {ip}..."):
-            services_match = services.get(port, "Unknown")
-            with socket.socket() as sock:
-                sock.settimeout(0.5)
+        reader, writer = await asyncio.wait_for(
+            asyncio.open_connection(ip, port),
+            timeout=0.5
+        )
+        writer.close()
+        return ((port, services_match))
+    except:
+        pass
 
-                result = sock.connect_ex((ip, port))
 
-                if result == 0:
-                    open_ports.append((port, services_match))
 
-        return open_ports
 
-    except socket.gaierror as err:
-        console.print(Panel(f"[red]Error[/red] , {err}"))
-        return None
 
+async def check_ports(ip):
+    tasks = []
+    for port in range(20, 101):
+        tasks.append(check_one_port(ip, port))
+
+    results = await asyncio.gather(*tasks)
+    open_ports = [r for r in results if r is not None]
+    return open_ports
